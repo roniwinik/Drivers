@@ -1318,7 +1318,7 @@ class SequenceToWaveforms:
             gates.CZ.new_angles(
                 config.get('QB1 Phi 2QB #12'), config.get('QB2 Phi 2QB #12'))
 
-            gates.CR.update_params(config.get('CR amplitude'), config.get('CR phase'), config.get('CR frequency'), 0, config.get('CR length'), config.get('CR cancelation amplitude'), config.get('CR cancelation phase'))
+            gates.CR.update_params(config.get('CR amplitude'), config.get('CR phase'), config.get('CR frequency'), 0, config.get('CR length'), config.get('CR cancelation amplitude'), config.get('CR cancelation phase'), np.pi/2, 0, np.pi/2)
 
             self.pulses_2qb[n] = pulse
 

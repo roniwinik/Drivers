@@ -384,7 +384,7 @@ class CRgate(CompositeGate):
 
     """
 
-    def __init__(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase):
+    def __init__(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, phi_x):
         super().__init__(n_qubit=3)
         #self.number_of_qubits = 2
         CRg = CRGate_pulse(amplitude = 1, plateau = 10e-9, phase = 0, width = 0)
@@ -401,18 +401,21 @@ class CRgate(CompositeGate):
         CRgc.width = CRg.width
         CRgc.plateau = CRg.plateau
             
+        Xp_phi_x = SingleQubitXYRotation(phi=phi_x, theta=np.pi, name='Xp')
+        self.add_gate([VirtualZGate(phi_z1), VirtualZGate(phi_z2)], [0, 1])
+        self.add_gate([I, Xp_phi_x], [0, 1])
         self.add_gate([CRg, CRgc],[2, 1])
 
     def number_of_qubits(self):
         return 3
-    def update_params(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase):
+    def update_params(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, phi_x):
                  
         """Update gate parameters.
         Parameters
         ----------
 
         """
-        self.__init__(cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase)
+        self.__init__(cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, phi_x)
                  
 
     def __str__(self):
@@ -495,7 +498,7 @@ H = CompositeGate(n_qubit=1, name='H')
 H.add_gate(VZp)
 H.add_gate(Y2p)
 
-CR = CRgate(cr_amp = 0, cr_phase = 0, cr_freq = 0, cr_width = 0, cr_length = 0, crc_amp = 0, crc_phase = 0)
+CR = CRgate(cr_amp = 0, cr_phase = 0, cr_freq = 0, cr_width = 0, cr_length = 0, crc_amp = 0, crc_phase = 0, phi_z1 = np.pi/2, phi_z2 = 0, phi_x = np.pi/2)
 #CR = CrossResonance(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
 
 CZ = CPHASE_with_1qb_phases(
