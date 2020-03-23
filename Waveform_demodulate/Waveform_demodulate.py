@@ -42,10 +42,13 @@ class Driver(InstrumentDriver.InstrumentWorker):
             # get correct data and return as trace dict
             if quant.name in ('Response',):
                 waveform = self.getValueArray('Raw Signal')
-                dt, self.cData = self.demodulate(waveform)
+                if (len(waveform)>0):
+                        dt, self.cData = self.demodulate(waveform)
                 #if self.getValue('Save file?'):
                 #    self.saveDemodulatedResponse_toFile(self.getValue('Save response data'), self.cData)
-                value = quant.getTraceDict(self.cData, t0 = 0.0, dt = dt)
+                        value = quant.getTraceDict(self.cData, t0 = 0.0, dt = dt)
+                else:
+                    value = 0
             elif quant.name in ('Trace In',):
                 value = quant.getValue()
             else:

@@ -1,21 +1,27 @@
 #!/usr/bin/env python
-from BaseDriver import LabberDriver
-from sequence_builtin import Rabi, CPMG, PulseTrain, CZgates, CZecho
-from sequence_rb import SingleQubit_RB, TwoQubit_RB
-
 import importlib
-import numpy as np
 import os
 import sys
+import copy
+
+import numpy as np
+
+from BaseDriver import LabberDriver
+from sequence_builtin import (
+    CPMG, PulseTrain, Rabi, SpinLocking, ReadoutTraining)
+from sequence_rb import SingleQubit_RB, TwoQubit_RB
+from sequence import SequenceToWaveforms
+import logging
+log = logging.getLogger('LabberDriver')
 
 # dictionary with built-in sequences
 SEQUENCES = {'Rabi': Rabi,
              'CP/CPMG': CPMG,
              'Pulse train': PulseTrain,
-             'C-phase Pulses': CZgates,
-             'C-phase Echo': CZecho,
              '1-QB Randomized Benchmarking': SingleQubit_RB,
              '2-QB Randomized Benchmarking': TwoQubit_RB,
+             'Spin-locking': SpinLocking,
+             'Readout training': ReadoutTraining,
              'Custom': type(None)}
 
 
@@ -26,11 +32,11 @@ class Driver(LabberDriver):
         """Perform the operation of opening the instrument connection."""
         # init variables
         self.sequence = None
-        self.values = {}
+        self.sequence_to_waveforms = SequenceToWaveforms(1)
+        self.waveforms = {}
         # always create a sequence at startup
         name = self.getValue('Sequence')
         self.sendValueToOther('Sequence', name)
-
 
     def performSetValue(self, quant, value, sweepRate=0.0, options={}):
         """Perform the Set Value instrument operation."""
@@ -50,10 +56,11 @@ class Driver(LabberDriver):
                     mod = importlib.import_module(modName)
                     # the custom sequence class has to be named
                     # 'CustomSequence'
-                    self.sequence = mod.CustomSequence()
+                    if not isinstance(self.sequence, mod.CustomSequence):
+                        self.sequence = mod.CustomSequence(1)
                 else:
                     # standard built-in sequence
-                    self.sequence = new_type()
+                    self.sequence = new_type(1)
 
         elif (quant.name == 'Custom Python file' and
               self.getValue('Sequence') == 'Custom'):
@@ -64,26 +71,25 @@ class Driver(LabberDriver):
             sys.path.append(path)
             mod = importlib.import_module(modName)
             # the custom sequence class has to be named 'CustomSequence'
-            self.sequence = mod.CustomSequence()
+            if not isinstance(self.sequence, mod.CustomSequence):
+                self.sequence = mod.CustomSequence(1)
         return value
 
-
     def performGetValue(self, quant, options={}):
-        """Perform the Get Value instrument operation
-
-        """
+        """Perform the Get Value instrument operation."""
         # ignore if no sequence
         if self.sequence is None:
             return quant.getValue()
 
         # check type of quantity
         if (quant.name.startswith('Voltage, QB') or
-            quant.name.startswith('Single-shot, QB')):
+                quant.name.startswith('Single-shot, QB')):
             # perform demodulation, check if config is updated
             if self.isConfigUpdated():
                 # update sequence object with current driver configuation
                 config = self.instrCfg.getValuesDict()
                 self.sequence.set_parameters(config)
+                self.sequence_to_waveforms.set_parameters(config)
             # get qubit index and waveforms
             n = int(quant.name.split(', QB')[1]) - 1
             demod_iq = self.getValue('Demodulation - IQ')
@@ -95,9 +101,11 @@ class Driver(LabberDriver):
             ref = self.getValue('Demodulation - Reference')
             # perform demodulation
             if demod_iq:
-                value = self.sequence.readout.demodulate_iq(n, signal_i, signal_q, ref)
+                value = self.sequence_to_waveforms.readout.demodulate_iq(
+                    n, signal_i, signal_q, ref)
             else:
-                value = self.sequence.readout.demodulate(n, signal, ref)
+                value = self.sequence_to_waveforms.readout.demodulate(
+                    n, signal, ref)
             # average values if not single-shot
             if not quant.name.startswith('Single-shot, QB'):
                 value = np.mean(value)
@@ -108,8 +116,81 @@ class Driver(LabberDriver):
                 # update sequence object with current driver configuation
                 config = self.instrCfg.getValuesDict()
                 self.sequence.set_parameters(config)
-                # calcluate waveforms
-                self.values = self.sequence.calculate_waveforms(config)
+                self.sequence_to_waveforms.set_parameters(config)
+
+                # check if calculating multiple sequences, for randomization
+                multi_rb = config.get('Output multiple sequences', False)
+                multi_training = config.get('Train all states at once', False)
+
+                if (multi_rb or multi_training):
+                    # create multiple randomizations, store in memory
+                    if multi_rb:
+                        multi_param = 'Randomize'
+                        align_multi_to_end = config.get(
+                            'Align RB waveforms to end', False)
+                        n_call = int(
+                            config.get('Number of multiple sequences', 1))
+                    elif multi_training:
+                        # readout training
+                        multi_param = 'Training, input state'
+                        align_multi_to_end = False
+                        # for readout, always start with first state
+                        config[multi_param] = -1
+                        training_type = config['Training type']
+                        if training_type == 'Specific qubit':
+                            n_call = 2
+                        elif training_type == 'All qubits at once':
+                            n_call = 2
+                        elif training_type == 'All combinations':
+                            n_call = 2**self.sequence.n_qubit
+
+                    calls = []
+                    for n in range(n_call):
+                        config[multi_param] += 1
+                        calls.append(
+                            copy.deepcopy(
+                                self.sequence_to_waveforms.get_waveforms(
+                                    self.sequence.get_sequence(config))))
+
+                    # after all calls are done, convert output to matrix form
+                    self.waveforms = dict()
+                    n_qubit = self.sequence.n_qubit
+                    # start with xy, z and gate waveforms, list of data
+                    for key in ['xy', 'z', 'gate']:
+                        # get size of longest waveform
+                        self.waveforms[key] = []
+                        for n in range(n_qubit):
+                            log.info('Generating {} waveform for qubit {}'.format(key, n))
+
+                            length = max([len(call[key][n]) for call in calls])
+                            # build matrix
+                            datatype = calls[0][key][n].dtype
+                            data = np.zeros((n_call, length), dtype=datatype)
+                            for m, call in enumerate(calls):
+                                if align_multi_to_end:
+                                    data[m][-len(call[key][n]):] = call[key][n]
+                                else:
+                                    data[m][:len(call[key][n])] = call[key][n]
+                            self.waveforms[key].append(data)
+
+                    # same for readout waveforms
+                    for key in ['readout_trig', 'readout_iq']:
+                        length = max([len(call[key]) for call in calls])
+                        datatype = calls[0][key].dtype
+                        data = np.zeros((n_call, length), dtype=datatype)
+                        for m, call in enumerate(calls):
+                            if align_multi_to_end:
+                                data[m][-len(call[key]):] = call[key]
+                            else:
+                                data[m][:len(call[key])] = call[key]
+                        self.waveforms[key] = data
+
+                else:
+                    # normal operation, calcluate waveforms
+                    # log.info('generating case 2')
+                    self.waveforms = self.sequence_to_waveforms.get_waveforms(
+                        self.sequence.get_sequence(config))
+                    # log.info('Z waveform max: {}'.format(np.max(self.waveforms['z'])))
             # get correct data from waveforms stored in memory
             value = self.getWaveformFromMemory(quant)
         else:
@@ -117,9 +198,8 @@ class Driver(LabberDriver):
             value = quant.getValue()
         return value
 
-
     def getWaveformFromMemory(self, quant):
-        """Return data from already calculated waveforms"""
+        """Return data from already calculated waveforms."""
         # check which data to return
         if quant.name[-1] in ('1', '2', '3', '4', '5', '6', '7', '8', '9'):
             # get name and number of qubit waveform asked for
@@ -128,33 +208,30 @@ class Driver(LabberDriver):
             # get correct vector
             if name == 'Trace - I':
                 if self.getValue('Swap IQ'):
-                    value = self.values['wave_xy'][n].imag
+                    value = self.waveforms['xy'][n].imag
                 else:
-                    value = self.values['wave_xy'][n].real
+                    value = self.waveforms['xy'][n].real
             elif name == 'Trace - Q':
                 if self.getValue('Swap IQ'):
-                    value = self.values['wave_xy'][n].real
+                    value = self.waveforms['xy'][n].real
                 else:
-                    value = self.values['wave_xy'][n].imag
+                    value = self.waveforms['xy'][n].imag
             elif name == 'Trace - Z':
-                value = self.values['wave_z'][n]
+                value = self.waveforms['z'][n]
             elif name == 'Trace - G':
-                value = self.values['wave_gate'][n]
+                value = self.waveforms['gate'][n]
 
         elif quant.name == 'Trace - Readout trig':
-            value = self.values['readout_trig']
+            value = self.waveforms['readout_trig']
         elif quant.name == 'Trace - Readout I':
-            value = self.values['readout_iq'].real
+            value = self.waveforms['readout_iq'].real
         elif quant.name == 'Trace - Readout Q':
-            value = self.values['readout_iq'].imag
+            value = self.waveforms['readout_iq'].imag
 
         # return data as dict with sampling information
-        dt = 1 / self.sequence.sample_rate
+        dt = 1 / self.sequence_to_waveforms.sample_rate
         value = quant.getTraceDict(value, dt=dt)
         return value
-
-
-
 
 
 if __name__ == '__main__':

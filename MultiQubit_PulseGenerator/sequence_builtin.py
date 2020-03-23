@@ -1,165 +1,177 @@
 #!/usr/bin/env python3
-import numpy as np
-from copy import copy
-from sequence import Sequence
-from gates import Gate
-from pulse import PulseShape
-
-# add logger, to allow logging to Labber's instrument log 
+# add logger, to allow logging to Labber's instrument log
 import logging
+import numpy as np
+
+import gates
+from sequence import Sequence
+
 log = logging.getLogger('LabberDriver')
 
 
-
 class Rabi(Sequence):
-    """Sequence for driving Rabi oscillations in multiple qubits"""
+    """Sequence for driving Rabi oscillations in multiple qubits."""
 
     def generate_sequence(self, config):
-        """Generate sequence by adding gates/pulses to waveforms"""
-        # get parameters
-        uniform_amplitude = config['Uniform pulse ampiltude for all qubits']
+        """Generate sequence by adding gates/pulses to waveforms."""
         # just add pi-pulses for the number of available qubits
-        for n in range(self.n_qubit):
-            # get pulse to use
-            pulse = self.pulses_1qb[n]
-            # if using uniform amplitude, copy from pulse 1
-            if uniform_amplitude:
-                pulse.amplitude = self.pulses_1qb[0].amplitude
-            # add pulse to sequence
-            self.add_single_pulse(n, pulse, self.first_delay, align_left=True)
-
+        self.add_gate_to_all(gates.Xp, align='right')
 
 
 class CPMG(Sequence):
-    """Sequence for multi-qubit Ramsey/Echo/CMPG experiments"""
+    """Sequence for multi-qubit Ramsey/Echo/CMPG experiments."""
 
     def generate_sequence(self, config):
-        """Generate sequence by adding gates/pulses to waveforms"""
+        """Generate sequence by adding gates/pulses to waveforms."""
         # get parameters
         n_pulse = int(config['# of pi pulses'])
         pi_to_q = config['Add pi pulses to Q']
         duration = config['Sequence duration']
         edge_to_edge = config['Edge-to-edge pulses']
-        if self.pulses_1qb[0].shape == PulseShape.GAUSSIAN:
-            # Only gaussian pulses has a truncation range
-            truncation = config['Truncation range']
+        if config['Add last pi/2 pulse to Q']:
+            pi2_final = gates.Y2p
         else:
-            truncation = 0.0
+            pi2_final = gates.X2p
 
-        max_width = np.max([p.total_duration() for p in self.pulses_1qb[:self.n_qubit]])
         # select type of refocusing pi pulse
-        gate_pi = Gate.Yp if pi_to_q else Gate.Xp
+        gate_pi = gates.Yp if pi_to_q else gates.Xp
 
-        # add pulses for all active qubits
-        for n, pulse in enumerate(self.pulses_1qb[:self.n_qubit]):
-            # get effective pulse durations, for timing purposes
-            width = self.pulses_1qb[n].total_duration() if edge_to_edge else 0.0
-            pulse_total = width * (n_pulse + 1)
-            # center pulses in add_gates mode; ensure sufficient pulse spacing in CPMG mode
-            t0 = self.first_delay + self.pulses_1qb[n].total_duration()/2
-            # Align everything to the end of the last pulse of the one with the longest pulse width
-            t0 += (max_width - self.pulses_1qb[n].total_duration()) * (n_pulse + 1) if edge_to_edge else 0.0
-            t0 += (max_width - self.pulses_1qb[n].total_duration())
-            # special case for -1 pulses => T1 experiment
-            if n_pulse < 0:
-                # add pi pulse
-                self.add_single_gate(n, Gate.Xp, t0)
-                # delay the reaodut by creating a very small pulse
-                small_pulse = copy(pulse)
-                small_pulse.amplitude = 1E-6 * pulse.amplitude
-                self.add_single_pulse(n, small_pulse, t0 + duration)
-                continue
+        # always do T1 same way, regardless if edge-to-edge or center-center
+        if n_pulse < 0:
+            self.add_gate_to_all(gate_pi)
+            self.add_gate_to_all(gates.IdentityGate(width=duration), dt=0)
 
-            # add the first and last pi/2 pulses
-            self.add_single_gate(n, Gate.X2p, t0)
-            self.add_single_gate(n, Gate.X2p, t0 + duration + pulse_total)
-            # add more pulses
+        elif edge_to_edge:
+            # edge-to-edge pulsing, set pulse separations
+            self.add_gate_to_all(gates.X2p)
+            # for ramsey, just add final pulse
             if n_pulse == 0:
-                # no pulses = ramsey
-                time_pi = []
-            elif n_pulse == 1:
-                # one pulse, echo experiment
-                time_pi = [t0 + width + 0.5 * duration, ]
-            elif n_pulse > 1:
-                # figure out timing of pi pulses
-                period = duration / n_pulse
-                time_pi = (t0 + width + 0.5 * period +
-                           (period + width) * np.arange(n_pulse))
-            # add pi pulses, one by one
-            for t in time_pi:
-                self.add_single_gate(n, gate_pi, t)
+                self.add_gate_to_all(gates.X2p, dt=duration)
+            else:
+                dt = duration / n_pulse
+                # add first pi pulse after half duration
+                self.add_gate_to_all(gate_pi, dt=dt/2)
+                # add rest of pi pulses
+                for i in range(n_pulse - 1):
+                    self.add_gate_to_all(gate_pi, dt=dt)
+                # add final pi/2 pulse
+                self.add_gate_to_all(pi2_final, dt=dt/2)
 
-
-
+        else:
+            # center-to-center spacing, set absolute pulse positions
+            self.add_gate_to_all(gates.X2p, t0=0)
+            # add pi pulses at right position
+            for i in range(n_pulse):
+                self.add_gate_to_all(gate_pi,
+                                     t0=(i + 0.5) * (duration / n_pulse))
+            # add final pi/2 pulse
+            self.add_gate_to_all(pi2_final, t0=duration)
 
 
 class PulseTrain(Sequence):
-    """Sequence for multi-qubit pulse trains, for pulse calibrations"""
+    """Sequence for multi-qubit pulse trains, for pulse calibrations."""
 
     def generate_sequence(self, config):
-        """Generate sequence by adding gates/pulses to waveforms"""
+        """Generate sequence by adding gates/pulses to waveforms."""
         # get parameters
         n_pulse = int(config['# of pulses'])
         alternate = config['Alternate pulse direction']
 
-        # create list with gates
-        gates = []
+        if n_pulse == 0:
+            self.add_gate_to_all(gates.I)
         for n in range(n_pulse):
-            # check if alternate pulses
-            if alternate and (n % 2) == 1:
-                gate = Gate.Xm
+            pulse_type = config['Pulse']
+            if pulse_type == 'CPh':
+                for i in range(self.n_qubit-1):
+                    self.add_gate([i, i+1], gates.CPh)
             else:
-                gate = Gate.Xp
-            # create list with same gate for all active qubits
-            gate_qubits = [gate for q in range(self.n_qubit)]
-            # append to list of gates
-            gates.append(gate_qubits)
-
-        # add list of gates to sequence
-        self.add_gates(gates)
-
-class CZgates(Sequence):
-    """Sequence for multi-qubit pulse trains, for pulse calibrations"""
-
-    def generate_sequence(self, config):
-        """Generate sequence by adding gates/pulses to waveforms"""
-        # get parameters
-        n_pulse = int(config['# of pulses, CZgates'])
-
-        # create list with gates
-        gates = []        
-        for n in range(n_pulse):
-            gate = Gate.CPh
-            # create list with same gate for all active qubits 
-            gate_qubits = [gate for q in range(self.n_qubit)]
-            # append to list of gates
-            gates.append(gate_qubits)
-
-        # add list of gates to sequence 
-        self.add_gates(gates)
+                if alternate and (n % 2) == 1:
+                    pulse_type = pulse_type.replace('p', 'm')
+                gate = getattr(gates, pulse_type)
+                self.add_gate_to_all(gate)
 
 
-class CZecho(Sequence):
-    """Sequence for multi-qubit pulse trains, for pulse calibrations"""
+class SpinLocking(Sequence):
+    """ Sequence for spin-locking experiment.
+
+    """
 
     def generate_sequence(self, config):
-        """Generate sequence by adding gates/pulses to waveforms"""
-        
-        # create list with gates
-        self.add_single_gate(0, Gate.X2p, self.first_delay + self.period_1qb/2)
-        self.add_single_gate(0, Gate.CPh, self.first_delay + self.period_1qb + self.period_2qb/2)
-        self.add_single_gate(0, Gate.Xp, self.first_delay + 3*self.period_1qb/2 + self.period_2qb)
-        self.add_single_gate(1, Gate.Xp, self.first_delay + 5*self.period_1qb/2 + self.period_2qb)
-        self.add_single_gate(0, Gate.CPh, self.first_delay + 3*self.period_1qb + 3*self.period_2qb/2)
-        self.add_single_gate(0, Gate.X2p, self.first_delay + 7*self.period_1qb/2 + 2*self.period_2qb)
-        self.add_single_gate(1, Gate.Xp, self.first_delay + 9*self.period_1qb/2 + 2*self.period_2qb)
+        """Generate sequence by adding gates/pulses to waveforms."""
+
+        pulse_amps = []
+        for ii in range(9):
+            pulse_amps.append(
+                float(config['Drive pulse amplitude #' + str(ii + 1)]))
+        pulse_duration = float(config['Drive pulse duration'])
+        pulse_phase = float(config['Drive pulse phase']) / 180.0 * np.pi
+        pulse_sequence = config['Pulse sequence']
+
+        if pulse_sequence == 'SL-3':
+            self.add_gate_to_all(gates.Y2p)
+        if pulse_sequence == 'SL-5a':
+            self.add_gate_to_all(gates.Y2m)
+        if pulse_sequence == 'SL-5b':
+            self.add_gate_to_all(gates.Y2p)
+
+        if pulse_sequence != 'SL-3':
+            self.add_gate_to_all(gates.Xp)
+
+        rabi_gates = []
+        for ii in range(self.n_qubit):
+            rabi_gates.append(
+                gates.RabiGate(pulse_amps[ii], pulse_duration, pulse_phase))
+        self.add_gate(list(range(self.n_qubit)), rabi_gates)
+        if pulse_sequence != 'SL-3':
+            self.add_gate_to_all(gates.Xp)
+
+        if pulse_sequence == 'SL-3':
+            self.add_gate_to_all(gates.Y2p)
+        if pulse_sequence == 'SL-5a':
+            self.add_gate_to_all(gates.Y2m)
+        if pulse_sequence == 'SL-5b':
+            self.add_gate_to_all(gates.Y2p)
+
+        return
+
+
+class ReadoutTraining(Sequence):
+    """Sequence for training readout state discriminator.
+
+    """
+
+    def generate_sequence(self, config):
+        """Generate sequence by adding gates/pulses to waveforms."""
+
+        training_type = config['Training type']
+        state = int(config['Training, input state'])
+        # currently only supports two states
+        n_state = 2
+
+        if training_type == 'Specific qubit':
+            # specific qubit, just add gate
+            qubit = int(config['Training, qubit']) - 1
+            if state:
+                self.add_gate(qubit, gates.Xp)
+
+        elif training_type == 'All qubits at once':
+            # add to all qubits
+            if state:
+                self.add_gate_to_all(gates.Xp)
+
+        elif training_type == 'All combinations':
+            # get bitstring for current state
+            bitstring = np.base_repr(state, n_state, self.n_qubit)
+            bitstring = bitstring[::-1][:self.n_qubit]
+            qubit_list = []
+            gate_list = []
+            for n in range(self.n_qubit):
+                if int(bitstring[n]):
+                    qubit_list.append(n)
+                    gate_list.append(gates.Xp)
+
+            self.add_gate(qubit_list, gate_list)
 
 
 if __name__ == '__main__':
     pass
-
-
-
-
-
-
