@@ -133,27 +133,26 @@ def add_singleQ_clifford(index, gate_seq, pad_with_I=True):
             gate_seq.append(gates.I)
 
 
-def add_twoQ_clifford(index, gate_seq_1, gate_seq_2):
+def add_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = [], generator = 'CZ'):
     """Add single qubit clifford (11520 = 576 + 5184 + 5184 + 576)."""
+    #gate_seq_aux: "Auxillary" gate sequence (in the case of CR, this corresponds to the CR pulse)
     if (index < 0):
         raise ValueError(
             'index is out of range. it should be smaller than 11520 and '
             'greater or equal to 0: ', str(index))
     elif (index < 576):
-        add_singleQ_based_twoQ_clifford(index, gate_seq_1, gate_seq_2)
+        add_singleQ_based_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = gate_seq_aux, generator = generator)
     elif (index < 5184 + 576):
-        add_CNOT_like_twoQ_clifford(index, gate_seq_1, gate_seq_2)
+        add_CNOT_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = gate_seq_aux, generator = generator)
     elif (index < 5184 + 5184 + 576):
-        add_iSWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2)
+        add_iSWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux =  gate_seq_aux, generator = generator)
     elif (index < 576 + 5184 + 5184 + 576):
-        add_SWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2)
+        add_SWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = gate_seq_aux, generator = generator)
     else:
         raise ValueError(
             'index is out of range. it should be smaller than 11520 and '
             'greater or equal to 0: ', str(index))
-
     pass
-
 
 def add_singleQ_S1(index, gate_seq):
     """Add single qubit clifford from S1.
@@ -173,7 +172,6 @@ def add_singleQ_S1(index, gate_seq):
         gate_seq.append(gates.Y2m)
         gate_seq.append(gates.I)  # auxiliary
 
-
 def add_singleQ_S1_X2p(index, gate_seq):
     """Add single qubit clifford from S1_X2p.
 
@@ -191,7 +189,6 @@ def add_singleQ_S1_X2p(index, gate_seq):
         gate_seq.append(gates.Y2m)
         gate_seq.append(gates.I)  # auxiliary
         gate_seq.append(gates.I)  # auxiliary
-
 
 def add_singleQ_S1_Y2p(index, gate_seq):
     """Add single qubit clifford from S1_Y2p.
@@ -211,6 +208,24 @@ def add_singleQ_S1_Y2p(index, gate_seq):
         gate_seq.append(gates.Y2m)
         gate_seq.append(gates.X2p)
 
+def add_singleQ_S1_X2mY2m(index, gate_seq):
+    """Add single qubit clifford from S1_X2mY2m. (for CR-based RB)
+
+    (X2mY2m-like-subset of single qubit clifford group) (3)
+    """
+    if index == 0:
+        gate_seq.append(gates.Y2m)
+        gate_seq.append(gates.X2m)  # auxiliary
+        gate_seq.append(gates.I)  # auxiliary
+    elif index == 1:
+        gate_seq.append(gates.X2p)
+        gate_seq.append(gates.I)
+        gate_seq.append(gates.I)  # auxiliary
+    elif index == 2:
+        gate_seq.append(gates.Y2m)
+        gate_seq.append(gates.X2m)
+        gate_seq.append(gates.Y2m)
+
 def add_singleQ_S1_Z2p(index, gate_seq):
     """Add single qubit clifford from S1_Z2p.
 
@@ -229,26 +244,30 @@ def add_singleQ_S1_Z2p(index, gate_seq):
         gate_seq.append(gates.Ym)
         gate_seq.append(gates.I)  # auxiliary
 
-def add_singleQ_based_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
+
+def add_singleQ_based_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = [], generator = 'CZ'):
     """Add single-qubit-gates-only-based two Qubit Clifford.
 
     (24*24 = 576)
     (gate_seq_1: gate seq. of qubit #1, gate_seq_t: gate seq. of qubit #2)
     """
+
     # randomly sample from single qubit cliffords (24)
     index_1 = index % 24
 
     # randomly sample from single qubit cliffords (24)
     index_2 = (index // 24) % 24
+
     add_singleQ_clifford(index_1, gate_seq_1)
     add_singleQ_clifford(index_2, gate_seq_2)
+    if generator in ['CR_CNOT']:
+        add_singleQ_S1(0, gate_seq_aux) # add redundant I gates for a AUX channel
 
 
-def add_CNOT_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
+def add_CNOT_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = [], generator = 'CZ'):
     """Add CNOT like two Qubit Clifford.
-
-    (24*24*3*3 = 5184)
-    (gate_seq_1: gate seq. of qubit #1, gate_seq_t: gate seq. of qubit #2)
+        (24*24*3*3 = 5184)
+        (gate_seq_1: gate seq. of qubit #1, gate_seq_2: gate seq. of qubit #2, gate_seq_aux: auxillary. used for CR gates)
     """
     # randomly sample from single qubit cliffords (24)
     index_1 = index % 24
@@ -262,7 +281,6 @@ def add_CNOT_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
     # randomly sample from S1_Y2p (3) or S1_Z2p (3)
     index_4 = (index // 24 // 24 // 3) % 3
 
-    generator = kwargs.get('generator', 'CZ')
     if generator == 'CZ':
         add_singleQ_clifford(index_1, gate_seq_1)
         add_singleQ_clifford(index_2, gate_seq_2)
@@ -271,29 +289,28 @@ def add_CNOT_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
         add_singleQ_S1(index_3, gate_seq_1)
         add_singleQ_S1_Y2p(index_4, gate_seq_2)
 
-    elif generator == 'iSWAP':
+    elif generator == 'CR_CNOT':
+        # requires one CNOT gate
         add_singleQ_clifford(index_1, gate_seq_1)
         add_singleQ_clifford(index_2, gate_seq_2)
+        add_singleQ_S1(0, gate_seq_aux) # add redundant I gates for aux. channel
 
         gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.iSWAP)
-        gate_seq_1.append(gates.X2p)
         gate_seq_2.append(gates.I)
-        gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.iSWAP)
+        gate_seq_aux.append(gates.CR)
 
         add_singleQ_S1(index_3, gate_seq_1)
-        add_singleQ_S1_Z2p(index_4, gate_seq_2)
+        add_singleQ_S1(index_4, gate_seq_2)
+        add_singleQ_S1(0, gate_seq_aux) # add redundant I gates for aux. channel
 
 
 
-def add_iSWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
+def add_iSWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux = [],  generator = 'CZ'):
     """Add iSWAP like two Qubit Clifford.
 
     (24*24*3*3 = 5184)
     (gate_seq_1: gate seq. of qubit #1, gate_seq_t: gate seq. of qubit #2)
     """
-    generator = kwargs.get('generator', 'CZ')
 
     # randomly sample from single qubit cliffords (24)
     index_1 = index % 24
@@ -308,7 +325,6 @@ def add_iSWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
     index_4 = (index // 24 // 24 // 3) % 3
 
 
-
     if generator == 'CZ':
         add_singleQ_clifford(index_1, gate_seq_1)
         add_singleQ_clifford(index_2, gate_seq_2)
@@ -321,16 +337,33 @@ def add_iSWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
         add_singleQ_S1_Y2p(index_3, gate_seq_1)
         add_singleQ_S1_X2p(index_4, gate_seq_2)
 
-    elif generator == 'iSWAP':
+    elif generator == 'CR_CNOT':
+        # requires two CNOT gates.
         add_singleQ_clifford(index_1, gate_seq_1)
         add_singleQ_clifford(index_2, gate_seq_2)
+        add_singleQ_S1(0, gate_seq_aux) # add redundant I gates for aux. channel
+
         gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.iSWAP)
-        add_singleQ_S1(index_1, gate_seq_1)
-        add_singleQ_S1(index_2, gate_seq_2)
+        gate_seq_2.append(gates.I)
+        gate_seq_aux.append(gates.CR)
 
+        gate_seq_1.append(gates.Y2p)
+        gate_seq_2.append(gates.X2m)
+        gate_seq_aux.append(gates.I)
 
-def add_SWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.Yp)
+        gate_seq_aux.append(gates.I)
+
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.I)
+        gate_seq_aux.append(gates.CR)
+
+        add_singleQ_S1_Y2p(index_3, gate_seq_1)
+        add_singleQ_S1_X2mY2m(index_4, gate_seq_2)
+        add_singleQ_S1(0, gate_seq_aux) # add redundant I gates for aux. channel
+
+def add_SWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, gate_seq_aux, generator = 'CZ'):
     """Add SWAP like two Qubit Clifford.
 
     (24*24*= 576)
@@ -342,7 +375,6 @@ def add_SWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
     # randomly sample from single qubit cliffords (24)
     index_2 = (index // 24) % 24
 
-    generator = kwargs.get('generator', 'CZ')
     if generator == 'CZ':
         add_singleQ_clifford(index_1, gate_seq_1)
         add_singleQ_clifford(index_2, gate_seq_2)
@@ -359,22 +391,40 @@ def add_SWAP_like_twoQ_clifford(index, gate_seq_1, gate_seq_2, **kwargs):
         gate_seq_1.append(gates.I)
         gate_seq_2.append(gates.Y2p)
 
-    elif generator == 'iSWAP':
+    elif generator == 'CR_CNOT':
+        # requires 3 CNOT gates
         add_singleQ_clifford(index_1, gate_seq_1)
         add_singleQ_clifford(index_2, gate_seq_2)
-        gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.iSWAP)
-        gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.X2m)
-        gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.iSWAP)
-        gate_seq_1.append(gates.X2m)
-        gate_seq_2.append(gates.I)
-        gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.iSWAP)
-        gate_seq_1.append(gates.I)
-        gate_seq_2.append(gates.X2m)
+        add_singleQ_S1(0, gate_seq_aux) # add redundant I gates for aux. channel
 
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.I)
+        gate_seq_aux.append(gates.CR)
+
+        # Hadamard = [Z, Y2p]
+        gate_seq_1.append(gates.Y2m)
+        gate_seq_2.append(gates.VZp)
+        gate_seq_aux.append(gates.I)
+
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.Y2p)
+        gate_seq_aux.append(gates.I)
+
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.I)
+        gate_seq_aux.append(gates.CR)
+
+        gate_seq_1.append(gates.Y2p)
+        gate_seq_2.append(gates.VZp)
+        gate_seq_aux.append(gates.I)
+
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.Y2p)
+        gate_seq_aux.append(gates.I)
+
+        gate_seq_1.append(gates.I)
+        gate_seq_2.append(gates.I)
+        gate_seq_aux.append(gates.CR)
 
 class SingleQubit_RB(Sequence):
     """Single qubit randomized benchmarking."""
@@ -392,7 +442,7 @@ class SingleQubit_RB(Sequence):
         sequence = config['Sequence']
         # Number of Cliffords to generate
         N_cliffords = int(config['Number of Cliffords'])
-        randomize = config['Randomize']
+        randomize = config['Random Seed']
         interleave = config['Interleave 1-QB Gate']
         multi_seq = config.get('Output multiple sequences', False)
         write_seq = config.get('Write sequence as txt file', False)
@@ -569,12 +619,13 @@ class SingleQubit_RB(Sequence):
 class TwoQubit_RB(Sequence):
     """Two qubit randomized benchmarking."""
 
-    prev_randomize = np.inf  # store the previous value
+    prev_rnd_seed = np.inf  # store the previous value
     prev_N_cliffords = np.inf  # store the previous value
     prev_interleave = np.inf  # store the previous value
     prev_interleaved_gate = np.inf  # store the previous value
     prev_sequence = ''
     prev_gate_seq = []
+    prev_generator = ""
 
     filepath_lookup_table = ""
 
@@ -599,16 +650,25 @@ class TwoQubit_RB(Sequence):
         # get parameters
 
         sequence = config['Sequence']
-        qubits_to_benchmark = [int(config['Qubits to Benchmark'][0]) - 1,
-                               int(config['Qubits to Benchmark'][2]) - 1]
+
         # Number of Cliffords to generate
         N_cliffords = int(config['Number of Cliffords'])
-        randomize = config['Randomize']
+        rnd_seed = config.get('Random Seed', 0)
         interleave = config['Interleave 2-QB Gate']
         multi_seq = config.get('Output multiple sequences', False)
         write_seq = config.get('Write sequence as txt file', False)
+        generator = config.get('Native 2-QB gate', 'CZ')
 
-        rnd.seed(randomize)
+        if generator == 'CZ':
+            qubits_to_benchmark = [int(config['Qubits to Benchmark'][0]) - 1, 
+                int(config['Qubits to Benchmark'][2]) - 1] 
+
+        elif generator in ['CR_CNOT']:
+            qubits_to_benchmark = [int(config['Qubits to Benchmark (CR gate)'][0]) - 1, 
+                int(config['Qubits to Benchmark (CR gate)'][2]) - 1,
+                int(config['Qubits to Benchmark (CR gate)'][4]) - 1,] 
+
+        rnd.seed(rnd_seed)
         if interleave is True:
             interleaved_gate = config['Interleaved 2-QB Gate']
         else:
@@ -616,27 +676,30 @@ class TwoQubit_RB(Sequence):
 
         # generate new randomized clifford gates only if configuration changes
         if (self.prev_sequence != sequence or
-                self.prev_randomize != randomize or
+                self.prev_rnd_seed != rnd_seed or
                 self.prev_N_cliffords != N_cliffords or
                 self.prev_interleave != interleave or
+                self.prev_generator != generator or
                 multi_seq or
                 self.prev_interleaved_gate != interleaved_gate):
 
-            self.prev_randomize = randomize
+            self.prev_rnd_seed = rnd_seed
             self.prev_N_cliffords = N_cliffords
             self.prev_interleave = interleave
             self.prev_sequence = sequence
+            self.prev_generator = generator
 
             multi_gate_seq = []
 
             # Generate 2QB RB sequence
             cliffordSeq1 = []
             cliffordSeq2 = []
+            cliffordSeqAux = []
             for j in range(N_cliffords):
-                log.info('Seed number: %d'%(randomize))
+                log.info('Seed number: %d'%(rnd_seed))
                 rndnum = rnd.randint(0, 11519)
                 # rndnum = rnd.randint(0, 576) #Only applying single qubit gates
-                add_twoQ_clifford(rndnum, cliffordSeq1, cliffordSeq2)
+                add_twoQ_clifford(rndnum, cliffordSeq1, cliffordSeq2, gate_seq_aux = cliffordSeqAux, generator = generator)
                 # If interleave gate,
                 if interleave is True:
                     self.prev_interleaved_gate = interleaved_gate
@@ -659,40 +722,68 @@ class TwoQubit_RB(Sequence):
                         cliffordSeq2.append(I_2QB)
                         # cliffordSeq1.append(gates.I)
                         # cliffordSeq2.append(gates.I)
+                    elif interleaved_gate == 'CR_CNOT':
+                        cliffordSeq1.append(gates.I)
+                        cliffordSeq2.append(gates.I)
+                        cliffordSeqAux.append(gates.CR)
 
 
             # remove redundant Identity gates for cliffordSeq1
             index_identity_clifford = [] # find where Identity gates are
             for p in range(len(cliffordSeq1)):
-                if (cliffordSeq1[p] == gates.I and cliffordSeq2[p] == gates.I):
-                    index_identity_clifford.append(p)
+                if not cliffordSeqAux: # If clifford_seq_Cplr is an empty list,
+                    if (cliffordSeq1[p] == gates.I and cliffordSeq2[p] == gates.I):
+                        index_identity_clifford.append(p)
+                else:
+                    if (cliffordSeq1[p] == gates.I and cliffordSeq2[p] == gates.I and cliffordSeqAux[p] == gates.I):
+                        index_identity_clifford.append(p)
             cliffordSeq1 = [m for n, m in enumerate(cliffordSeq1) if n not in index_identity_clifford]
             cliffordSeq2 = [m for n, m in enumerate(cliffordSeq2) if n not in index_identity_clifford]
+            if cliffordSeqAux: 
+                cliffordSeqAux = [m for n, m in enumerate(cliffordSeqAux) if n not in index_identity_clifford]
+
+            log.info('*** clifford sequence *** ')
+            log.info("QB1 clifford gate sequence: " + str([cliffords.Gate_to_strGate(g) for g in cliffordSeq1]))
+            log.info("QB2 clifford gate sequence: " + str([cliffords.Gate_to_strGate(g) for g in cliffordSeq2]))
+            if generator in ['CR_CNOT']:
+                log.info("Aux clifford gate sequence: " + str([cliffords.Gate_to_strGate(g) for g in cliffordSeqAux]))
+            log.info("=================================================")
 
             # get recovery gate seq
-            (recoverySeq1, recoverySeq2) = self.get_recovery_gate(
-                cliffordSeq1, cliffordSeq2, config)
+            (recoverySeq1, recoverySeq2, recoverySeqAux) = self.get_recovery_gate(
+                cliffordSeq1, cliffordSeq2, config, gate_seq_aux = cliffordSeqAux, generator = generator)
 
             # Remove redundant identity gates in recovery gate seq
             index_identity_recovery = [] # find where Identity gates are
             for p in range(len(recoverySeq1)):
-                if (recoverySeq1[p] == gates.I and recoverySeq2[p] == gates.I):
-                    index_identity_recovery.append(p)
+                if not recoverySeqAux: # If clifford_seq_Cplr is an empty list,
+                    if (recoverySeq1[p] == gates.I and recoverySeq2[p] == gates.I):
+                        index_identity_recovery.append(p)
+                else:
+                    if (recoverySeq1[p] == gates.I and recoverySeq2[p] == gates.I and recoverySeqAux[p] == gates.I):
+                        index_identity_clifford.append(p)
             recoverySeq1 = [m for n, m in enumerate(recoverySeq1) if n not in index_identity_recovery]
             recoverySeq2 = [m for n, m in enumerate(recoverySeq2) if n not in index_identity_recovery]
+            if recoverySeqAux:
+                recoverySeqAux = [m for n, m in enumerate(recoverySeqAux) if n not in index_identity_recovery]
 
             # Construct the total gate sequence.
             gateSeq1 = []
             gateSeq2 = []
+            gateSeqAux = []
             gateSeq1.extend(cliffordSeq1)
             gateSeq1.extend(recoverySeq1)
             gateSeq2.extend(cliffordSeq2)
             gateSeq2.extend(recoverySeq2)
+            gateSeqAux.extend(cliffordSeqAux)
+            gateSeqAux.extend(recoverySeqAux)
 
             # Avoid Error: zero-size array to reduction operation maximum which has no identity (05/05/2019)
             if (gateSeq1 == [] and gateSeq2 == []):
                 gateSeq1.append(gates.I)
                 gateSeq2.append(gates.I)
+                if generator in ['CR_CNOT']:
+                    gateSeqAux.append(gates.I)
 
             # test the recovery gate
             psi_gnd = np.matrix('1; 0; 0; 0') # ground state |00>
@@ -702,23 +793,27 @@ class TwoQubit_RB(Sequence):
                 directory = os.path.join(path_currentdir,'2QB_RBseq')
                 if not os.path.exists(directory):
                     os.makedirs(directory)
-                filename = datetime.now().strftime('%Y-%m-%d %H-%M-%S-f')[:-3] + '_N_cliffords=%d_seed=%d.txt'%(N_cliffords,randomize)
+                filename = datetime.now().strftime('%Y-%m-%d %H-%M-%S-f')[:-3] + '_N_cliffords=%d_rnd_seed=%d.txt'%(N_cliffords,rnd_seed)
                 # filename = datetime.now().strftime('%Y-%m-%d %H-%M-%S-%f')[:-3] + '_N_cliffords=%d_seed=%d.txt'%(N_cliffords,randomize)
                 filepath = os.path.join(directory,filename)
                 log.info('make file: ' + filepath)
                 with open(filepath, "w") as text_file:
                     print('New Sequence', file=text_file)
-                    for i in range(len(gateSeq1)):
-                        print("Index: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(gateSeq1[i]) + ", " + cliffords.Gate_to_strGate(gateSeq2[i]) +']', file=text_file)
-                    for i in range(len(cliffordSeq1)):
-                         print("CliffordIndex: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(cliffordSeq1[i]) + ", " + cliffords.Gate_to_strGate(cliffordSeq2[i]) +']', file=text_file)
-                    for i in range(len(recoverySeq1)):
-                         print("RecoveryIndex: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(recoverySeq1[i]) + ", " + cliffords.Gate_to_strGate(recoverySeq2[i]) +']', file=text_file)
-            psi = np.matmul(self.evaluate_sequence(gateSeq1, gateSeq2), psi_gnd)
+                    if generator in 'CR_CNOT':
+                        for i in range(len(gateSeq1)):
+                            print("Index: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(gateSeq1[i]) + ", " + cliffords.Gate_to_strGate(gateSeq2[i]) + ", " + cliffords.Gate_to_strGate(gateSeqAux[i])  +']', file=text_file)
+                    else:
+                        for i in range(len(gateSeq1)):
+                            print("Index: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(gateSeq1[i]) + ", " + cliffords.Gate_to_strGate(gateSeq2[i]) +']', file=text_file)
+                        for i in range(len(cliffordSeq1)):
+                             print("CliffordIndex: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(cliffordSeq1[i]) + ", " + cliffords.Gate_to_strGate(cliffordSeq2[i]) +']', file=text_file)
+                        for i in range(len(recoverySeq1)):
+                             print("RecoveryIndex: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(recoverySeq1[i]) + ", " + cliffords.Gate_to_strGate(recoverySeq2[i]) +']', file=text_file)
+            psi = np.matmul(self.evaluate_sequence(gateSeq1, gateSeq2, gate_seq_aux = gateSeqAux, generator = generator), psi_gnd)
 
             np.set_printoptions(precision=2)
             log.info('The matrix of the overall gate sequence:')
-            log.info(self.evaluate_sequence(gateSeq1, gateSeq2))
+            log.info(self.evaluate_sequence(gateSeq1, gateSeq2, gate_seq_aux = gateSeqAux, generator = generator))
 
             log.info('--- TESTING THE RECOVERY GATE ---')
             log.info('The probability amplitude of the final state vector: ' + str(np.matrix(psi).flatten()))
@@ -726,31 +821,45 @@ class TwoQubit_RB(Sequence):
             log.info('-------------------------------------------')
 
             # Assign two qubit gate sequence to where we want
-            # for i in range(qubits_to_benchmark[0] - 1):
-            #     multi_gate_seq.append([None] * len(gateSeq1))
-            multi_gate_seq.append(gateSeq2)
-            multi_gate_seq.append(gateSeq1)
-            # for i in range(self.n_qubit - qubits_to_benchmark[1]):
-            #     multi_gate_seq.append([None] * len(gateSeq1))
+            if (generator == 'CZ'):
+                multi_gate_seq.append(gateSeq2)
+                multi_gate_seq.append(gateSeq1)
+            elif (generator in ['CR_CNOT']):
+                multi_gate_seq.append(gateSeqAux)
+                multi_gate_seq.append(gateSeq2)
+                multi_gate_seq.append(gateSeq1)
 
             # transpose list of lists
             multi_gate_seq = list(map(list, itertools.zip_longest(*multi_gate_seq, fillvalue=gates.I))) # Not to chop
 
             # self.add_gates(multi_gate_seq)
             for gate_seq in multi_gate_seq:
-                if gate_seq[0] == gates.CZ:
-                    self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq[0])
-                else:
-                    self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq)
+                if generator == 'CZ':
+                    if gate_seq[0] == gates.CZ:
+                        self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq[0])
+                    else:
+                        self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq)
+                elif generator == 'CR_CNOT':
+                    log.info('qubits_to_benchmark: ' + str(qubits_to_benchmark) + ', gate: ' + str(gate_seq))
+                    if gate_seq[0] == gates.CR:
+                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq[0])
+                    else:
+                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq)
             self.prev_gate_seq = multi_gate_seq
         else:
             for gate_seq in self.prev_gate_seq:
-                if gate_seq[0] == gates.CZ:
-                    self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq[0])
-                else:
-                    self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq)
+                if generator == 'CZ':
+                    if gate_seq[0] == gates.CZ:
+                        self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq[0])
+                    else:
+                        self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq)
+                elif generator == 'CR_CNOT':
+                    if gate_seq[0] == gates.CR:
+                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq[0])
+                    else:
+                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq)
 
-    def evaluate_sequence(self, gate_seq_1, gate_seq_2):
+    def evaluate_sequence(self, gate_seq_1, gate_seq_2, gate_seq_aux = None, generator = 'CZ'):
         """
         Evaluate the two qubit gate sequence.
 
@@ -762,6 +871,8 @@ class TwoQubit_RB(Sequence):
         gate_seq_2: list of class Gate (defined in "gates.py")
             The gate sequence applied to Qubit "2"
 
+        gate_seq_aux: list of class Gate (defined in "gates.py")
+            The auxillary gate sequence (used for CR gates)
         Returns
         -------
         twoQ_gate: np.matrix (shape = (4,4))
@@ -819,21 +930,23 @@ class TwoQubit_RB(Sequence):
                 gate_2 = np.matmul(np.matrix([[0, 1], [-1, 0]]), gate_2)
 
             gate_12 = np.kron(gate_1, gate_2)
-            if (gate_seq_1[i] == gates.CZ or gate_seq_2[i] == gates.CZ):
-                gate_12 = np.matmul(
-                    np.matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0],
-                               [0, 0, 0, -1]]), gate_12)
-            # iSWAP <- To be added.
-            # elif (gate_seq_1[i] == gates.iSWAP or gate_seq_2[i] == gates.iSWAP):
-            #     gate_12 = np.matmul(
-            #         np.matrix([[1, 0, 0, 0], [0, 0, 1j, 0], [0, 1j, 0, 0],
-            #                    [0, 0, 0, 1]]), gate_12)
+            if generator == 'CZ':
+                if (gate_seq_1[i] == gates.CZ or gate_seq_2[i] == gates.CZ):
+                    gate_12 = np.matmul(
+                        np.matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0],
+                                   [0, 0, 0, -1]]), gate_12)
+            elif generator == 'CR_CNOT':
+                if (gate_seq_aux[i] == gates.CR):
+                    gate_12 = np.matmul(
+                        np.matrix([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1],
+                                   [0, 0, 1, 0]]), gate_12)
+
 
             twoQ_gate = np.matmul(gate_12, twoQ_gate)
         # log.info('two qubit gate: ' + str(twoQ_gate))
         return twoQ_gate
 
-    def get_recovery_gate(self, gate_seq_1, gate_seq_2, config):
+    def get_recovery_gate(self, gate_seq_1, gate_seq_2, config, gate_seq_aux = [], generator = 'CZ'):
         """
         Get the recovery (the inverse) gate
 
@@ -859,18 +972,21 @@ class TwoQubit_RB(Sequence):
             '1; 0; 0; 0')  # initial state: ground state |00>
 
         qubit_state = np.matmul(self.evaluate_sequence(
-            gate_seq_1, gate_seq_2), qubit_state)
+            gate_seq_1, gate_seq_2, gate_seq_aux = gate_seq_aux, generator = generator), qubit_state)
 
         # find recovery gate which makes qubit_state return to initial state
         total_num_cliffords = 11520
         recovery_seq_1 = []
         recovery_seq_2 = []
+        recovery_seq_aux = []
 
         # Search the recovery gate in two Qubit clifford group
         find_cheapest = config['Find the cheapest recovery Clifford']
 
         cheapest_recovery_seq_1 = []
         cheapest_recovery_seq_2 = []
+        cheapest_recovery_seq_aux = []
+
         log.info('*** get recovery gate *** ')
         if (find_cheapest == True):
             min_N_2QB_gate = np.inf
@@ -882,7 +998,11 @@ class TwoQubit_RB(Sequence):
             if (use_lookup_table == True):
                 filepath_lookup_table = config['File path of the look-up table']
                 if len(filepath_lookup_table) == 0:
-                    filepath_lookup_table = os.path.join(path_currentdir, 'recovery_rb_table.pickle')
+                    if (generator == 'CZ'):
+                        filepath_lookup_table = os.path.join(path_currentdir, 'recovery_rb_table.pickle')
+                    elif (generator == 'CR_CNOT'):
+                        filepath_lookup_table = os.path.join(path_currentdir, 'recovery_rb_table_CR_CNOT.pickle')
+
                 if filepath_lookup_table != self.filepath_lookup_table:
                     log.info("Load Look-up table.")
                     self.filepath_lookup_table = filepath_lookup_table
@@ -897,25 +1017,33 @@ class TwoQubit_RB(Sequence):
                         for str_Gate in seq2:
                             cheapest_recovery_seq_2.append(cliffords.strGate_to_Gate(str_Gate))
 
+                        if generator in ['CR_CNOT']:
+                            seqAux = self.dict_lookup_table['recovery_gates_Aux'][index]
+                            for str_Gate in seqAux:
+                                cheapest_recovery_seq_aux.append(cliffords.strGate_to_Gate(str_Gate))
+
                         log.info("=== FOUND THE CHEAPEST RECOVERY GATE IN THE LOOK-UP TABLE. ===")
                         log.info("QB1 recovery gate sequence: " + str(seq1))
                         log.info("QB2 recovery gate sequence: " + str(seq2))
+                        if generator in ['CR_CNOT']:
+                            log.info("Auxiliary recovery gate sequence: " + str (seqAux))
                         log.info("=================================================")
-                        return(cheapest_recovery_seq_1, cheapest_recovery_seq_2)
+                        return(cheapest_recovery_seq_1, cheapest_recovery_seq_2, cheapest_recovery_seq_aux)
 
             log.info("--- COULDN'T FIND THE RECOVERY GATE IN THE LOOK-UP TABLE... ---")
 
 
         # Calculate the matrix of the clifford sequence
-        matrix_cliffords = self.evaluate_sequence(gate_seq_1,gate_seq_2)
+        matrix_cliffords = self.evaluate_sequence(gate_seq_1,gate_seq_2, gate_seq_aux = gate_seq_aux, generator = generator)
 
         for i in range(total_num_cliffords):
             recovery_seq_1 = []
             recovery_seq_2 = []
-            add_twoQ_clifford(i, recovery_seq_1, recovery_seq_2)
+            recovery_seq_aux = []
+            add_twoQ_clifford(i, recovery_seq_1, recovery_seq_2, gate_seq_aux = recovery_seq_aux, generator= generator)
 
             # Calculate the matrix of the recovery clifford
-            matrix_recovery = self.evaluate_sequence(recovery_seq_1, recovery_seq_2)
+            matrix_recovery = self.evaluate_sequence(recovery_seq_1, recovery_seq_2, gate_seq_aux = gate_seq_aux, generator = generator)
 
             # Calculate the matrix of the total clifford sequence
             matrix_total = np.matmul(matrix_recovery,matrix_cliffords)
@@ -929,10 +1057,17 @@ class TwoQubit_RB(Sequence):
 
                     # count the numbers of the gates
                     for j in range(len(recovery_seq_1)):
-                        if (recovery_seq_1[j] == gates.CZ or recovery_seq_2[j] == gates.CZ):
-                            N_2QB_gate += 1
-                        else:
-                            N_1QB_gate += 2
+                        if generator == 'CZ':
+                            if (recovery_seq_1[j] == gates.CZ or recovery_seq_2[j] == gates.CZ):
+                                N_2QB_gate += 1
+                            else:
+                                N_1QB_gate += 2
+                        elif generator == 'CR_CNOT':
+                            if (recovery_seq_aux[j] == gates.CR):
+                                N_2QB_gate += 1
+                            else:
+                                N_1QB_gate += 2
+
                         if (recovery_seq_1[j] == gates.I):
                             N_I_gate += 1
                         if (recovery_seq_2[j] == gates.I):
@@ -972,16 +1107,18 @@ class TwoQubit_RB(Sequence):
         if (find_cheapest == True):
             recovery_seq_1 = []
             recovery_seq_2 = []
+            recovery_seq_aux = []
             log.info('The index of the cheapest recovery clifford: %d'%(cheapest_index))
-            add_twoQ_clifford(cheapest_index, recovery_seq_1, recovery_seq_2)
+            add_twoQ_clifford(cheapest_index, recovery_seq_1, recovery_seq_2, gate_seq_aux = recovery_seq_aux, generator = generator)
 
 
         if (recovery_seq_1 == [] and recovery_seq_2 == []):
             recovery_seq_1 = [None]
             recovery_seq_2 = [None]
+            recovery_seq_aux = [None]
 
 
-        return (recovery_seq_1, recovery_seq_2)
+        return (recovery_seq_1, recovery_seq_2, recovery_seq_aux)
 
 
 if __name__ == '__main__':

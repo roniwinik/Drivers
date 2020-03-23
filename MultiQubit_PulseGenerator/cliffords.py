@@ -34,12 +34,15 @@ dict_m1QBGate = {'I': np.matrix('1,0;0,1'),
     'Yp': np.matrix('0,-1;1,0'),
     'Ym': np.matrix('0,1;-1,0'),
     'Zp': np.matrix('1,0;0,-1'),
+    'VZp': np.matrix('1,0;0,-1'),
     'Zm': np.matrix('1,0;0,-1')
     }
 dict_m2QBGate = {'SWAP': np.matrix('1,0,0,0; 0,0,1,0; 0,1,0,0; 0,0,0,1'),
     'CZ': np.matrix('1,0,0,0; 0,1,0,0; 0,0,1,0; 0,0,0,-1'),
     'iSWAP': np.matrix('1,0,0,0; 0,0,1j,0; 0,1j,0,0; 0,0,0,1'),
-    'CNOT': np.matrix('1,0,0,0; 0,1,0,0; 0,0,0,1; 0,0,1,0')}
+    'CNOT': np.matrix('1,0,0,0; 0,1,0,0; 0,0,0,1; 0,0,1,0'),
+    'CR_CNOT': np.matrix('1,0,0,0; 0,1,0,0; 0,0,0,1; 0,0,1,0'),
+    }
 
 
 def expect(_psi, _op):
@@ -126,6 +129,8 @@ def Gate_to_strGate(_Gate):
         str_Gate = 'Y2m'
     elif (_Gate == gates.Zp):
         str_Gate = 'Zp'
+    elif (_Gate == gates.VZp):
+        str_Gate = 'VZp'
     elif (_Gate == gates.Zm):
         str_Gate = 'Zm'
     elif (_Gate == gates.Z2p):
@@ -134,6 +139,8 @@ def Gate_to_strGate(_Gate):
         str_Gate = 'Z2m'
     elif (_Gate == gates.CZ):
         str_Gate = 'CZ'
+    elif (_Gate == gates.CR):
+        str_Gate = 'CR_CNOT'
 
     return str_Gate
 
@@ -172,6 +179,8 @@ def strGate_to_Gate(_strGate):
         g = gates.Y2m
     elif (_strGate == 'Zp'):
         g = gates.Zp
+    elif (_strGate == 'VZp'):
+        g = gates.VZp
     elif (_strGate == 'Zm'):
         g = gates.Zm
     elif (_strGate == 'Z2p'):
@@ -180,6 +189,9 @@ def strGate_to_Gate(_strGate):
         g = gates.Z2m
     elif (_strGate == 'CZ'):
         g = gates.CZ
+    elif (_strGate == 'CR_CNOT'):
+        g = gates.CR
+
 
     return g
 
@@ -206,43 +218,57 @@ def get_stabilizer(_psi):
 
     return stabilizer
 
-def generate_2QB_Cliffords(_index):
+def generate_2QB_Cliffords(_index, **kwargs):
     seq_QB1 = []
     seq_QB2 = []
-    sequence_rb.add_twoQ_clifford(_index, seq_QB1, seq_QB2)
+    seq_Aux = []
+    generator = kwargs.get('generator', 'CZ')
+    sequence_rb.add_twoQ_clifford(_index, seq_QB1, seq_QB2, gate_seq_aux = seq_Aux, generator = generator)
     m2QBClifford = np.identity(4, dtype = complex)
     for i in range(len(seq_QB1)):
+        # print(Gate_to_strGate(seq_QB1[i]), Gate_to_strGate(seq_QB2[i]), Gate_to_strGate(seq_Aux[i]))
         _mGate = np.matrix([1])
-        if (seq_QB1[i] == gates.CZ or seq_QB2[i] == gates.CZ ): # two qubit gates
-            _mGate = np.kron(dict_m2QBGate['CZ'], _mGate)
-        else: # 1QB gates
-            for g in [seq_QB2[i], seq_QB1[i]]:
-                if (g == gates.I):
-                    _mGate = np.kron(dict_m1QBGate['I'], _mGate)
-                elif (g == gates.Xp):
-                    _mGate = np.kron(dict_m1QBGate['Xp'], _mGate)
-                elif (g == gates.Xm):
-                    _mGate = np.kron(dict_m1QBGate['Xm'], _mGate)
-                elif (g == gates.X2p):
-                    _mGate = np.kron(dict_m1QBGate['X2p'], _mGate)
-                elif (g == gates.X2m):
-                    _mGate = np.kron(dict_m1QBGate['X2m'], _mGate)
-                elif (g == gates.Yp):
-                    _mGate = np.kron(dict_m1QBGate['Yp'], _mGate)
-                elif (g == gates.Ym):
-                    _mGate = np.kron(dict_m1QBGate['Ym'], _mGate)
-                elif (g == gates.Y2p):
-                    _mGate = np.kron(dict_m1QBGate['Y2p'], _mGate)
-                elif (g == gates.Y2m):
-                    _mGate = np.kron(dict_m1QBGate['Y2m'], _mGate)
-                elif (g == gates.Zp):
-                    _mGate = np.kron(dict_m1QBGate['Zp'], _mGate)
-                elif (g == gates.Zm):
-                    _mGate = np.kron(dict_m1QBGate['Zm'], _mGate)
-                elif (g == gates.Z2p):
-                    _mGate = np.kron(dict_m1QBGate['Z2p'], _mGate)
-                elif (g == gates.Z2m):
-                    _mGate = np.kron(dict_m1QBGate['Z2m'], _mGate)
+        if generator == 'CZ':
+            if (seq_QB1[i] == gates.CZ or seq_QB2[i] == gates.CZ ): # two qubit gates
+                _mGate = np.kron(dict_m2QBGate['CZ'], _mGate)
+                m2QBClifford = mul(_mGate, m2QBClifford)
+                continue
+        elif generator == 'CR_CNOT':
+            if seq_Aux[i] == gates.CR:
+                _mGate = np.kron(dict_m2QBGate['CR_CNOT'], _mGate)
+                m2QBClifford = mul(_mGate, m2QBClifford)
+                continue
+
+        # else: # 1QB gates
+        for g in [seq_QB2[i], seq_QB1[i]]:
+            if (g == gates.I):
+                _mGate = np.kron(dict_m1QBGate['I'], _mGate)
+            elif (g == gates.Xp):
+                _mGate = np.kron(dict_m1QBGate['Xp'], _mGate)
+            elif (g == gates.Xm):
+                _mGate = np.kron(dict_m1QBGate['Xm'], _mGate)
+            elif (g == gates.X2p):
+                _mGate = np.kron(dict_m1QBGate['X2p'], _mGate)
+            elif (g == gates.X2m):
+                _mGate = np.kron(dict_m1QBGate['X2m'], _mGate)
+            elif (g == gates.Yp):
+                _mGate = np.kron(dict_m1QBGate['Yp'], _mGate)
+            elif (g == gates.Ym):
+                _mGate = np.kron(dict_m1QBGate['Ym'], _mGate)
+            elif (g == gates.Y2p):
+                _mGate = np.kron(dict_m1QBGate['Y2p'], _mGate)
+            elif (g == gates.Y2m):
+                _mGate = np.kron(dict_m1QBGate['Y2m'], _mGate)
+            elif (g == gates.Zp):
+                _mGate = np.kron(dict_m1QBGate['Zp'], _mGate)
+            elif (g == gates.VZp):
+                _mGate = np.kron(dict_m1QBGate['VZp'], _mGate)
+            elif (g == gates.Zm):
+                _mGate = np.kron(dict_m1QBGate['Zm'], _mGate)
+            elif (g == gates.Z2p):
+                _mGate = np.kron(dict_m1QBGate['Z2p'], _mGate)
+            elif (g == gates.Z2m):
+                _mGate = np.kron(dict_m1QBGate['Z2m'], _mGate)
         m2QBClifford = mul(_mGate, m2QBClifford)
     return (m2QBClifford)
 
@@ -296,6 +322,8 @@ if __name__ == "__main__":
     # ----- THIS IS FOR GENERATING RECOVERY CLIFFORD LOOK-UP TABLE ------
     # -------------------------------------------------------------------
 
+    generator = 'CR_CNOT'
+
     # Start with ground state
     psi_00 = np.matrix('1;0;0;0')
     psi_01 = np.matrix('0;1;0;0')
@@ -307,14 +335,16 @@ if __name__ == "__main__":
     list_psi = []
     list_recovery_gates_QB1 = []
     list_recovery_gates_QB2 = []
+    list_recovery_gates_Aux = []
     cnt = 0
 
+    print('generator : %s'%(generator))
     # Apply 11520 different 2QB cliffords and get the corresponding stabilizer states
     for i in range(N_2QBcliffords):
         if (i/N_2QBcliffords > cnt):
             print('Running... %d %%'%(cnt*100))
             cnt = cnt+0.01
-        g = generate_2QB_Cliffords(i)
+        g = generate_2QB_Cliffords(i, generator = generator)
 
         final_psi_00 = dot(g, psi_00)
         final_psi_01 = dot(g, psi_01)
@@ -337,12 +367,12 @@ if __name__ == "__main__":
             cheapest_index = None
 
             for j in range(N_2QBcliffords):
-                recovery_gate = generate_2QB_Cliffords(j)
+                recovery_gate = generate_2QB_Cliffords(j, generator = generator)
                 seq_QB1 = []
                 seq_QB2 = []
-                # sequence_rb.add_twoQ_clifford(j, seq_QB1, seq_QB2)
-                # print(dot(recovery_gate, final_psi_00))
-                # exit()
+                seq_Aux = []
+
+                sequence_rb.add_twoQ_clifford(j, seq_QB1, seq_QB2, gate_seq_aux = seq_Aux, generator = generator)
                 if ((np.abs(1-np.abs(dot(recovery_gate, final_psi_00)[0,0])) < 1e-6) and
                     (np.abs(1-np.abs(dot(recovery_gate, final_psi_01)[1,0])) < 1e-6) and
                     (np.abs(1-np.abs(dot(recovery_gate, final_psi_10)[2,0])) < 1e-6) and
@@ -361,10 +391,16 @@ if __name__ == "__main__":
 
                     # count the numbers of the gates
                     for k in range(len(seq_QB1)):
-                        if (seq_QB1[k] == gates.CZ or seq_QB2[k] == gates.CZ):
-                            N_2QB_gate += 1
-                        else:
-                            N_1QB_gate += 2
+                        if generator == 'CZ':
+                            if (seq_QB1[k] == gates.CZ or seq_QB2[k] == gates.CZ):
+                                N_2QB_gate += 1
+                            else:
+                                N_1QB_gate += 2
+                        elif generator == 'CR_CNOT':
+                            if (seq_Aux[k] == gates.CR):
+                                N_2QB_gate += 1
+                            else:
+                                N_1QB_gate += 2
                         if (seq_QB1[k] == gates.I):
                             N_I_gate += 1
                         if (seq_QB2[k] == gates.I):
@@ -393,24 +429,33 @@ if __name__ == "__main__":
 
             seq_recovery_QB1 = []
             seq_recovery_QB2 = []
-            sequence_rb.add_twoQ_clifford(cheapest_index, seq_recovery_QB1, seq_recovery_QB2)
+            seq_recovery_Aux = []
+            sequence_rb.add_twoQ_clifford(cheapest_index, seq_recovery_QB1, seq_recovery_QB2, gate_seq_aux = seq_recovery_Aux, generator = generator)
 
             # remove redundant Identity gates
             index_identity = [] # find where Identity gates are
             for p in range(len(seq_recovery_QB1)):
-                if (seq_recovery_QB1[p] == gates.I and seq_recovery_QB2[p] == gates.I):
-                    index_identity.append(p)
+                if generator == 'CZ':
+                    if (seq_recovery_QB1[p] == gates.I and seq_recovery_QB2[p] == gates.I):
+                        index_identity.append(p)
+                elif generator in ['CR_CNOT']:
+                    if (seq_recovery_QB1[p] == gates.I and seq_recovery_QB2[p] == gates.I and seq_recovery_Aux[p] == gates.I):
+                        index_identity.append(p)
             seq_recovery_QB1 = [m for n, m in enumerate(seq_recovery_QB1) if n not in index_identity]
             seq_recovery_QB2 = [m for n, m in enumerate(seq_recovery_QB2) if n not in index_identity]
+            if generator in ['CR_CNOT']:
+                seq_recovery_Aux = [m for n, m in enumerate(seq_recovery_Aux) if n not in index_identity]
 
             # convert the sequences into the text-format (Avoid using customized python class objects)
-            for _seq in [seq_recovery_QB1, seq_recovery_QB2]:
+            for _seq in [seq_recovery_QB1, seq_recovery_QB2, seq_recovery_Aux]:
                 for q in range(len(_seq)):
                     _seq[q] = Gate_to_strGate(_seq[q])
             list_recovery_gates_QB1.append(seq_recovery_QB1)
             list_recovery_gates_QB2.append(seq_recovery_QB2)
+            list_recovery_gates_Aux.append(seq_recovery_Aux)
             print('The cheapest recovery clifford gate (QB1): ' + str(seq_recovery_QB1))
             print('The cheapest recovery clifford gate (QB2): ' + str(seq_recovery_QB2))
+            print('The cheapest recovery clifford gate (Aux): ' + str(seq_recovery_Aux))
             print('\n')
 
     # save the results.
@@ -419,7 +464,11 @@ if __name__ == "__main__":
     dict_result['psi'] = list_psi
     dict_result['recovery_gates_QB1'] = list_recovery_gates_QB1
     dict_result['recovery_gates_QB2'] = list_recovery_gates_QB2
-    saveData('recovery_rb_table.pickle', dict_result)
+    if generator == 'CZ':
+        saveData('recovery_rb_table.pickle', dict_result)
+    elif generator == 'CR_CNOT':
+        dict_result['recovery_gates_Aux'] = list_recovery_gates_Aux
+        saveData('recovery_rb_table_CR_CNOT.pickle', dict_result)
 
     # load the results.
     # dict_result =loadData('recovery_rb_table.dill')
