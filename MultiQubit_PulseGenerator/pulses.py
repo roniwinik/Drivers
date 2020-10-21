@@ -106,10 +106,16 @@ class Pulse:
         y[t > (t0 + self.total_duration() / 2)] = 0
 
         if self.use_drag and self.complex:
-            beta = self.drag_coefficient / (t[1] - t[0])
-            y = y + 1j * beta * np.gradient(y)
-            y = y * np.exp(1j * 2 * np.pi * self.drag_detuning *
-                           (t - t0 + self.total_duration() / 2))
+            if len(t) > 1:
+                beta = self.drag_coefficient / (t[1] - t[0])
+                y = y + 1j * beta * np.gradient(y)
+                y = y * np.exp(1j * 2 * np.pi * self.drag_detuning *
+                               (t - t0 + self.total_duration() / 2))
+            else:
+                beta = 0
+                y = y
+                y = y * np.exp(1j * 2 * np.pi * self.drag_detuning *
+                               (t - t0 + self.total_duration() / 2))
 
         if self.complex:
             # Apply phase and SSB

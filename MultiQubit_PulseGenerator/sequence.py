@@ -1318,7 +1318,10 @@ class SequenceToWaveforms:
             gates.CZ.new_angles(
                 config.get('QB1 Phi 2QB #12'), config.get('QB2 Phi 2QB #12'))
 
-            gates.CR.update_params(config.get('CR amplitude'), config.get('CR phase'), config.get('CR frequency'), 0, config.get('CR length'), config.get('CR cancelation amplitude'), config.get('CR cancelation phase'), np.pi/2, 0, np.pi/2)
+            gates.CR.update_params()
+            gates.ZX.update_params(config.get('CR amplitude'), config.get('CR phase'), config.get('CR frequency'), config.get('CR width'), config.get('CR length'), config.get('CR cancelation amplitude'), config.get('CR cancelation phase'), config.get('VZ QB1 phase'), config.get('VZ QB2 phase'), config.get('Add X gate'), config.get('X QB2 phase'), 1)
+            gates.ZXp.update_params(config.get('CR amplitude'), config.get('CR phase'), config.get('CR frequency'), config.get('CR width'), config.get('CR length'), config.get('CR cancelation amplitude'), config.get('CR cancelation phase'), config.get('VZ QB1 phase'), config.get('VZ QB2 phase'), config.get('Add X gate'), config.get('X QB2 phase'), 1)
+            gates.ZXm.update_params(config.get('CR amplitude'), config.get('CR phase'), config.get('CR frequency'), config.get('CR width'), config.get('CR length'), config.get('CR cancelation amplitude'), config.get('CR cancelation phase'), config.get('VZ QB1 phase'), config.get('VZ QB2 phase'), config.get('Add X gate'), config.get('X QB2 phase'), -1)
 
             self.pulses_2qb[n] = pulse
 

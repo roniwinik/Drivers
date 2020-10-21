@@ -178,17 +178,25 @@ class CRGate_pulse(SingleQubitXYRotation):
     def __init__(self, amplitude =0, plateau =0, phase =0, width =0, frequency =0, name='CR_pulse'):
         self.amplitude = amplitude
         self.plateau = plateau
+        self.phi = phase
         self.phase = phase
         self.width = width
         self.frequency = frequency
+        self.use_drag = False
+        self.drag_coefficient = 0
+        #self.drag_detuning = 0.0        
 
     def get_adjusted_pulse(self, pulse):
         pulse = copy(pulse)
         pulse.amplitude = self.amplitude
         pulse.plateau = self.plateau
-        pulse.phase = self.phase
+        pulse.phase = self.phase + self.phi
         pulse.width = self.width
         pulse.frequency = self.frequency
+        self.use_drag = False
+        self.drag_coefficient = 0
+        #self.drag_detuning = 0.0 
+        
         return pulse
     def number_of_qubits(self):
         return 1
@@ -384,38 +392,44 @@ class CRgate(CompositeGate):
 
     """
 
-    def __init__(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, phi_x):
+    def __init__(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, en_xp, phi_x, amp_sign):
         super().__init__(n_qubit=3)
         #self.number_of_qubits = 2
         CRg = CRGate_pulse(amplitude = 1, plateau = 10e-9, phase = 0, width = 0)
-        CRg.amplitude = cr_amp
+        CRg.amplitude = amp_sign * cr_amp
         CRg.phase = cr_phase
         CRg.frequency = cr_freq
         CRg.width = cr_width
         CRg.plateau = cr_length
 
         CRgc = CRGate_pulse(amplitude = 0.5, plateau = 10e-9, phase = 0, width = 0)
-        CRgc.amplitude = crc_amp
+        CRgc.amplitude = amp_sign * crc_amp
         CRgc.phase = crc_phase
         CRgc.frequency = cr_freq
         CRgc.width = CRg.width
         CRgc.plateau = CRg.plateau
             
-        Xp_phi_x = SingleQubitXYRotation(phi=phi_x, theta=np.pi, name='Xp')
+        Xp_phi_x = SingleQubitXYRotation(phi=0, theta=phi_x, name='Xp')
+        #Yp_phi_x = SingleQubitXYRotation(phi=np.pi/2, theta=phi_x, name='Yp')
         self.add_gate([VirtualZGate(phi_z1), VirtualZGate(phi_z2)], [0, 1])
-        self.add_gate([I, Xp_phi_x], [0, 1])
+        if en_xp==1:
+            self.add_gate([I, Xp_phi_x], [0, 1])
+            #self.add_gate([I, Yp_phi_x], [0, 1])
+            #self.add_gate([I, I], [0, 1])
+        #else:
+        #    self.add_gate([I, I], [0, 1])
         self.add_gate([CRg, CRgc],[2, 1])
 
     def number_of_qubits(self):
         return 3
-    def update_params(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, phi_x):
+    def update_params(self, cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, en_xp, phi_x, amp_sign):
                  
         """Update gate parameters.
         Parameters
         ----------
 
         """
-        self.__init__(cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, phi_x)
+        self.__init__(cr_amp, cr_phase, cr_freq, cr_width, cr_length, crc_amp, crc_phase, phi_z1, phi_z2, en_xp, phi_x, amp_sign)
                  
 
     def __str__(self):
@@ -454,10 +468,40 @@ class CPHASE_with_1qb_phases(CompositeGate):
     def __str__(self):
         return "CZ"
 
+class CR_ZXEcho(CompositeGate):
+    """CR gate done with ZX echo.
 
+    Parameters
+    ----------
+
+    """
+
+    def __init__(self):
+        super().__init__(n_qubit=3)
+        self.add_gate([VZ2p, X2m, I])        
+        self.add_gate(ZXEcho)
+
+    def update_params(self):
+        """Update parameters.
+
+        Parameters
+        ----------
+
+        """
+        self.__init__()
+
+    def __str__(self):
+        return "CR"
+
+
+
+#I = IdentityGate(width=225e-9)
 I = IdentityGate(width=None)
 I0 = IdentityGate(width=0)
 Ilong = IdentityGate(width=75e-9)
+
+I_2QB = IdentityGate(width=225e-9)
+
 
 # X gates
 Xp = SingleQubitXYRotation(phi=0, theta=np.pi, name='Xp')
@@ -498,8 +542,24 @@ H = CompositeGate(n_qubit=1, name='H')
 H.add_gate(VZp)
 H.add_gate(Y2p)
 
-CR = CRgate(cr_amp = 0, cr_phase = 0, cr_freq = 0, cr_width = 0, cr_length = 0, crc_amp = 0, crc_phase = 0, phi_z1 = np.pi/2, phi_z2 = 0, phi_x = np.pi/2)
+ZX = CRgate(cr_amp = 0, cr_phase = 0, cr_freq = 0, cr_width = 0, cr_length = 0, crc_amp = 0, crc_phase = 0, phi_z1 = np.pi/2, phi_z2 = 0, en_xp= 0, phi_x = 0, amp_sign = 1)
+
+ZXp = CRgate(cr_amp = 0, cr_phase = 0, cr_freq = 0, cr_width = 0, cr_length = 0, crc_amp = 0, crc_phase = 0, phi_z1 = np.pi/2, phi_z2 = 0, en_xp= 0, phi_x = 0, amp_sign = 1)
+ZXm = CRgate(cr_amp = 0, cr_phase = 0, cr_freq = 0, cr_width = 0, cr_length = 0, crc_amp = 0, crc_phase = 0, phi_z1 = np.pi/2, phi_z2 = 0, en_xp= 0, phi_x = 0, amp_sign = -1)
+
 #CR = CrossResonance(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+ZXEcho = CompositeGate(n_qubit=3)
+ZXEcho.add_gate(ZXp)
+ZXEcho.add_gate([Xp, I, I])
+ZXEcho.add_gate(ZXm)
+ZXEcho.add_gate([Xp, I, I])
+
+CR = CR_ZXEcho()
+
+#CR = CompositeGate(n_qubit=3)
+#CR.add_gate(ZX)
+#CR.add_gate([VZ2p, X2m, I])        
+#CR.add_gate(ZXEcho)
 
 CZ = CPHASE_with_1qb_phases(
     0, 0)  # Start with 0, 0 as the single qubit phase shifts.

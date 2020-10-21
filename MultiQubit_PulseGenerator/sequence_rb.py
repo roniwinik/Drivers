@@ -506,7 +506,7 @@ class SingleQubit_RB(Sequence):
                              print("CliffordIndex: %d, Gate: ["%(i) + cliffords.Gate_to_strGate(single_gate_seq[i]) +"]", file=text_file)
                         print("Corresponding recovery sequence:")
                         print("Recovery Gate: [" + cliffords.Gate_to_strGate(recovery_gate) +"]", file=text_file)
-                single_gate_seq.append(recovery_gate)
+                single_gate_seq.append(recovery_gate) # RONI edit
                 multi_gate_seq.append(single_gate_seq)
             # transpose list of lists
             # - (06/23/2019 Update) Fill identity gates to the shorter sequence at the end -> at the beginning
@@ -716,12 +716,17 @@ class TwoQubit_RB(Sequence):
                         # TBA: adjust the duration of I gates?
                         # log.info('Qubits to benchmark: ' + str(qubits_to_benchmark))
                         # gate = gates.I(width = self.pulses_2qb[qubit]).value
-                        I_2QB = gates.IdentityGate(width =config.get('Width, 2QB'))
+                        # I_2QB = gates.IdentityGate(width =config.get('Width, 2QB'))
+                        #I_2QB = gates.IdentityGate(width = None)
 
-                        cliffordSeq1.append(I_2QB)
-                        cliffordSeq2.append(I_2QB)
-                        # cliffordSeq1.append(gates.I)
-                        # cliffordSeq2.append(gates.I)
+                        cliffordSeq1.append(gates.I)
+                        cliffordSeq2.append(gates.I)
+                        if cliffordSeqAux:
+                            cliffordSeqAux.append(gates.I)
+                        #cliffordSeq1.append(gates.I_2QB)
+                        #cliffordSeq2.append(gates.I_2QB)
+                        #if cliffordSeqAux:
+                        #    cliffordSeqAux.append(gates.I_2QB)
                     elif interleaved_gate == 'CR_CNOT':
                         cliffordSeq1.append(gates.I)
                         cliffordSeq2.append(gates.I)
@@ -825,9 +830,9 @@ class TwoQubit_RB(Sequence):
                 multi_gate_seq.append(gateSeq2)
                 multi_gate_seq.append(gateSeq1)
             elif (generator in ['CR_CNOT']):
-                multi_gate_seq.append(gateSeqAux)
-                multi_gate_seq.append(gateSeq2)
                 multi_gate_seq.append(gateSeq1)
+                multi_gate_seq.append(gateSeq2)
+                multi_gate_seq.append(gateSeqAux)
 
             # transpose list of lists
             multi_gate_seq = list(map(list, itertools.zip_longest(*multi_gate_seq, fillvalue=gates.I))) # Not to chop
@@ -841,8 +846,8 @@ class TwoQubit_RB(Sequence):
                         self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq)
                 elif generator == 'CR_CNOT':
                     log.info('qubits_to_benchmark: ' + str(qubits_to_benchmark) + ', gate: ' + str(gate_seq))
-                    if gate_seq[0] == gates.CR:
-                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq[0])
+                    if gate_seq[2] == gates.CR:
+                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq[2])
                     else:
                         self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq)
             self.prev_gate_seq = multi_gate_seq
@@ -854,8 +859,8 @@ class TwoQubit_RB(Sequence):
                     else:
                         self.add_gate(qubit=qubits_to_benchmark, gate=gate_seq)
                 elif generator == 'CR_CNOT':
-                    if gate_seq[0] == gates.CR:
-                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq[0])
+                    if gate_seq[2] == gates.CR:
+                        self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq[2])
                     else:
                         self.add_gate(qubit = qubits_to_benchmark, gate = gate_seq)
 

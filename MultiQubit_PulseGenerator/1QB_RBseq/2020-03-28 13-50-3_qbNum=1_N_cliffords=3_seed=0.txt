@@ -1,0 +1,8 @@
+New Sequence
+CliffordIndex: 0, Gate: [Y2p]
+CliffordIndex: 1, Gate: [X2p]
+CliffordIndex: 2, Gate: [X2m]
+CliffordIndex: 3, Gate: [Y2p]
+CliffordIndex: 4, Gate: [X2p]
+CliffordIndex: 5, Gate: [Y2m]
+Recovery Gate: [X2p]

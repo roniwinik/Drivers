@@ -125,7 +125,7 @@ class Driver(LabberDriver):
                 if (multi_rb or multi_training):
                     # create multiple randomizations, store in memory
                     if multi_rb:
-                        multi_param = 'Randomize'
+                        multi_param = 'Random Seed'
                         align_multi_to_end = config.get(
                             'Align RB waveforms to end', False)
                         n_call = int(
